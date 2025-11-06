@@ -13,7 +13,7 @@ export type LinkListener = (payload: LinkMePayload) => void;
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export type LinkMeWebConfig = {
-    baseUrl: string;
+    baseUrl?: string;
     appId?: string;
     appKey?: string;
     fetch?: FetchLike;

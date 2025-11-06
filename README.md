@@ -21,7 +21,6 @@ yarn add @li-nk/web-sdk
 import { configure, resolveFromUrl, onLink, claimDeferredIfAvailable } from '@li-nk/web-sdk';
 
 await configure({
-  baseUrl: 'https://links.your-app.com',
   appId: 'app_123',
   // Use a read-only app key if your Edge instance enforces app credentials.
   appKey: 'lk_live_read_only_key',
@@ -52,7 +51,6 @@ subscription.remove();
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `baseUrl` | `string` | — | Required base domain for your LinkMe Edge instance (e.g. `https://li-nk.me`). |
 | `appId` | `string` | `undefined` | Optional app identifier. Sent via `x-app-id` header. |
 | `appKey` | `string` | `undefined` | Optional app key. Use a read-only key when enforced. |
 | `fetch` | `typeof fetch` | `globalThis.fetch` | Provide your own fetch for environments that need a polyfill. |
@@ -88,7 +86,7 @@ const controller = new LinkMeController({
   httpClientFactory: () => myMockHttpClient,
 });
 
-await controller.configure({ baseUrl: 'https://links.example', fetch: unusedFetch });
+await controller.configure({ appId: 'app_123', appKey: 'key_123', fetch: unusedFetch });
 const payload = await controller.resolveFromUrl('https://links.example?cid=abc');
 ```
 
@@ -116,7 +114,6 @@ export function LinkMeProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
     const bootstrap = async () => {
       await configure({
-        baseUrl: process.env.NEXT_PUBLIC_LINKME_BASE_URL!,
         appId: process.env.NEXT_PUBLIC_LINKME_APP_ID,
         appKey: process.env.NEXT_PUBLIC_LINKME_APP_READ_KEY,
       });
@@ -163,7 +160,10 @@ export default function LinkMeGate({ children }) {
   useEffect(() => {
     let active = true;
     const init = async () => {
-      await configure({ baseUrl: process.env.NEXT_PUBLIC_LINKME_BASE_URL! });
+      await configure({
+        appId: process.env.NEXT_PUBLIC_LINKME_APP_ID,
+        appKey: process.env.NEXT_PUBLIC_LINKME_APP_READ_KEY,
+      });
       const initial = await resolveFromUrl();
       if (active && initial?.path) {
         router.replace(initial.path);
@@ -196,7 +196,10 @@ export function useLinkMe(onPayload: (payload: any) => void) {
   useEffect(() => {
     let mounted = true;
     const start = async () => {
-      await configure({ baseUrl: import.meta.env.VITE_LINKME_BASE_URL });
+      await configure({
+        appId: import.meta.env.VITE_LINKME_APP_ID,
+        appKey: import.meta.env.VITE_LINKME_APP_READ_KEY,
+      });
       const initial = await resolveFromUrl();
       if (mounted && initial) onPayload(initial);
     };
@@ -224,7 +227,10 @@ export function useLinkMe() {
   let unsubscribe: (() => void) | null = null;
 
   onMounted(async () => {
-    await configure({ baseUrl: import.meta.env.VITE_LINKME_BASE_URL });
+    await configure({
+      appId: import.meta.env.VITE_LINKME_APP_ID,
+      appKey: import.meta.env.VITE_LINKME_APP_READ_KEY,
+    });
     const initial = await resolveFromUrl();
     if (initial?.path) {
       router.replace(initial.path);
@@ -250,7 +256,10 @@ import { configure, resolveFromUrl, onLink } from '@li-nk/web-sdk';
 onMount(() => {
   let active = true;
   (async () => {
-    await configure({ baseUrl: import.meta.env.VITE_LINKME_BASE_URL });
+    await configure({
+      appId: import.meta.env.VITE_LINKME_APP_ID,
+      appKey: import.meta.env.VITE_LINKME_APP_READ_KEY,
+    });
     const initial = await resolveFromUrl();
     if (active && initial?.path) goto(initial.path, { replaceState: true });
   })();
@@ -280,7 +289,10 @@ export class LinkMeService implements OnDestroy {
   }
 
   private async bootstrap() {
-    await configure({ baseUrl: environment.linkMeBaseUrl });
+    await configure({
+      appId: environment.linkMeAppId,
+      appKey: environment.linkMeAppReadKey,
+    });
     const initial = await resolveFromUrl();
     if (initial?.path) {
       void this.router.navigateByUrl(initial.path);
@@ -306,13 +318,12 @@ Inject `LinkMeService` in your root component (e.g. `AppComponent`) to activate 
 
 ## Security notes
 
-- When keys are required (`REQUIRE_APP_KEYS` on your Edge instance), issue a *read-only* key for browser usage. The SDK only calls read endpoints (`GET /api/deeplink`, `POST /api/deeplink/resolve-url`, `POST /api/deferred/claim`, `POST /api/app-events`).
+- When keys are required, issue a *read-only* key for browser usage. The SDK only calls read endpoints (`GET /api/deeplink`, `POST /api/deeplink/resolve-url`, `POST /api/deferred/claim`, `POST /api/app-events`).
 - Consider rate limiting public usage if you expose the SDK on public marketing pages.
 - The SDK strips `cid` parameters from the address bar after they are resolved to avoid leaking tokens via referrers.
 
 ## Troubleshooting
 
-- Ensure your LinkMe domain is accessible from the browser (CORS enabled).
 - Verify `cid` query parameters make it through your router. If the parameter is removed before `configure`, pass the full URL into `resolveFromUrl(urlString)`.
 - Use the browser devtools network tab to inspect calls to `/api/deeplink` and `/api/deferred/claim`.
 

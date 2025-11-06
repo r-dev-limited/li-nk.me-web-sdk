@@ -3,10 +3,8 @@ import type { LinkMeEnvironment } from './environment.js';
 import { getOrigin } from './url.js';
 
 export function normalizeConfig(config: LinkMeWebConfig, env: LinkMeEnvironment): NormalizedConfig {
-    if (!config?.baseUrl) {
-        throw new Error('baseUrl is required');
-    }
-    const trimmed = config.baseUrl.replace(/\/$/, '');
+    const baseUrl = config?.baseUrl || 'https://li-nk.me';
+    const trimmed = baseUrl.replace(/\/$/, '');
     const origin = getOrigin(trimmed);
     const isBrowser = env.isBrowser();
     return {
