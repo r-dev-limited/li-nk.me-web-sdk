@@ -3,7 +3,7 @@
 Zero-dependency TypeScript SDK for handling LinkMe deep links, deferred links, and lightweight analytics directly in the browser. Works with vanilla JS and any modern framework (Next.js, React, Vue, Svelte, Angular, etc.).
 
 - Repo docs: ../../docs/help/docs/setup/web.md *(coming soon)*
-- Hosted docs: https://li-nk.me/help/setup/web *(coming soon)*
+- Hosted docs: https://li-nk.me/resources/developer/setup/web *(coming soon)*
 - License: Apache-2.0
 
 ## Installation
