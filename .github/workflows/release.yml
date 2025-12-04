@@ -1,0 +1,95 @@
+name: Release Web SDK
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to release (e.g., v1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Checkout tag (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [[ -z "$TAG" ]]; then
+            echo "Input 'tag' is required." >&2
+            exit 1
+          fi
+          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag '$TAG' not found. Fetching..." >&2
+            git fetch --tags
+            git rev-parse "$TAG" >/dev/null 2>&1 || {
+              echo "Tag '$TAG' still not found." >&2
+              exit 1
+            }
+          fi
+          git checkout "$TAG"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Ensure latest npm for trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Verify tag matches package version
+        shell: bash
+        run: |
+          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ "$TAG" != v* ]]; then
+            echo "Tag '$TAG' must start with 'v'." >&2
+            exit 1
+          fi
+
+          TAG_VERSION="${TAG#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+
+          echo "Tag version: $TAG_VERSION"
+          echo "package.json version: $PKG_VERSION"
+
+          if [[ "$TAG_VERSION" != "$PKG_VERSION" ]]; then
+            echo "Tag version does not match package.json version." >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish
+        run: npm publish --access public --provenance
+

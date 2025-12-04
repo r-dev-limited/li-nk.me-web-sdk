@@ -1,5 +1,5 @@
 {
-  "name": "@li-nk/web-sdk",
+  "name": "@li-nk.me/web-sdk",
   "version": "0.1.0",
   "description": "Zero-dependency browser SDK for LinkMe deep and deferred links.",
   "type": "module",
@@ -32,6 +32,9 @@
     "sdk"
   ],
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
     "rimraf": "^5.0.5",
     "typescript": "^5.5.4",

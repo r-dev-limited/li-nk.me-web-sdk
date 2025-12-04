@@ -9,16 +9,16 @@ Zero-dependency TypeScript SDK for handling LinkMe deep links, deferred links, a
 ## Installation
 
 ```bash
-npm install @li-nk/web-sdk
+npm install @li-nk.me/web-sdk
 # or
-pnpm add @li-nk/web-sdk
-yarn add @li-nk/web-sdk
+pnpm add @li-nk.me/web-sdk
+yarn add @li-nk.me/web-sdk
 ```
 
 ## Quick start
 
 ```ts
-import { configure, resolveFromUrl, onLink, claimDeferredIfAvailable } from '@li-nk/web-sdk';
+import { configure, resolveFromUrl, onLink, claimDeferredIfAvailable } from '@li-nk.me/web-sdk';
 
 await configure({
   appId: 'app_123',
@@ -79,7 +79,7 @@ subscription.remove();
 The SDK exposes the `LinkMeController` class, plus a pluggable `LinkMeEnvironment` and `HttpClient` factory. You can inject mocks for deterministic browser-free testing:
 
 ```ts
-import { LinkMeController } from '@li-nk/web-sdk';
+import { LinkMeController } from '@li-nk.me/web-sdk';
 
 const controller = new LinkMeController({
   environment: myMockEnvironment,
@@ -103,7 +103,7 @@ Below are minimal client-side examples. Guard all `configure` calls so they only
 
 import { useEffect } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { configure, onLink, resolveFromUrl } from '@li-nk/web-sdk';
+import { configure, onLink, resolveFromUrl } from '@li-nk.me/web-sdk';
 
 export function LinkMeProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -152,7 +152,7 @@ Mount `<LinkMeProvider>` at the root of your client layout (`app/layout.tsx`).
 ```tsx
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { configure, onLink, resolveFromUrl } from '@li-nk/web-sdk';
+import { configure, onLink, resolveFromUrl } from '@li-nk.me/web-sdk';
 
 export default function LinkMeGate({ children }) {
   const router = useRouter();
@@ -190,7 +190,7 @@ Wrap your custom `_app.tsx` with `<LinkMeGate>`.
 
 ```tsx
 import { useEffect } from 'react';
-import { configure, onLink, resolveFromUrl } from '@li-nk/web-sdk';
+import { configure, onLink, resolveFromUrl } from '@li-nk.me/web-sdk';
 
 export function useLinkMe(onPayload: (payload: any) => void) {
   useEffect(() => {
@@ -219,7 +219,7 @@ Call `useLinkMe` inside your root component, and handle payloads however you lik
 
 ```ts
 import { onMounted, onBeforeUnmount } from 'vue';
-import { configure, onLink, resolveFromUrl } from '@li-nk/web-sdk';
+import { configure, onLink, resolveFromUrl } from '@li-nk.me/web-sdk';
 import { useRouter } from 'vue-router';
 
 export function useLinkMe() {
@@ -251,7 +251,7 @@ export function useLinkMe() {
 ```ts
 import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
-import { configure, resolveFromUrl, onLink } from '@li-nk/web-sdk';
+import { configure, resolveFromUrl, onLink } from '@li-nk.me/web-sdk';
 
 onMount(() => {
   let active = true;
@@ -278,7 +278,7 @@ onMount(() => {
 ```ts
 import { Injectable, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
-import { configure, onLink, resolveFromUrl } from '@li-nk/web-sdk';
+import { configure, onLink, resolveFromUrl } from '@li-nk.me/web-sdk';
 
 @Injectable({ providedIn: 'root' })
 export class LinkMeService implements OnDestroy {
