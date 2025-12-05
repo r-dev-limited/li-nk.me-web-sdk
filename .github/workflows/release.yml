@@ -12,8 +12,8 @@ on:
         type: string
 
 permissions:
+  id-token: write  # Required for OIDC
   contents: read
-  id-token: write
 
 jobs:
   publish:
@@ -91,5 +91,5 @@ jobs:
         run: npm run build
 
       - name: Publish
-        run: npm publish --access public --provenance
+        run: npm publish --access public
 
