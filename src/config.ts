@@ -13,6 +13,7 @@ export function normalizeConfig(config: LinkMeWebConfig, env: LinkMeEnvironment)
         origin,
         appId: config.appId,
         appKey: config.appKey,
+        debug: config.debug ?? false,
         autoResolve: config.autoResolve ?? isBrowser,
         autoListen: config.autoListen ?? isBrowser,
         stripCid: config.stripCid ?? true,

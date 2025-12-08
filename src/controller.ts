@@ -33,6 +33,19 @@ export class LinkMeController {
         this.httpClientFactory = deps?.httpClientFactory ?? ((fetchImpl) => new FetchHttpClient(fetchImpl));
     }
 
+    private debugLog(message: string, data?: Record<string, any>): void {
+        if (!this.config?.debug) {
+            return;
+        }
+        if (typeof console !== 'undefined' && typeof console.log === 'function') {
+            if (data) {
+                console.log('[LinkMe]', message, data);
+            } else {
+                console.log('[LinkMe]', message);
+            }
+        }
+    }
+
     async configure(config: LinkMeWebConfig): Promise<void> {
         const normalized = normalizeConfig(config, this.environment);
         const fetchImpl = config.fetch ?? this.environment.getFetch();
@@ -41,13 +54,21 @@ export class LinkMeController {
         }
         this.config = normalized;
         this.httpClient = this.httpClientFactory(fetchImpl);
+        this.debugLog('configured', {
+            baseUrl: normalized.baseUrl,
+            appId: normalized.appId ?? null,
+            autoResolve: normalized.autoResolve,
+            autoListen: normalized.autoListen,
+        });
         this.detachNavigation();
         if (normalized.autoListen) {
+            this.debugLog('navigation.listen');
             this.unsubscribeNavigation = this.environment.subscribeToNavigation(() => {
                 void this.resolveFromUrl();
             });
         }
         if (normalized.autoResolve) {
+            this.debugLog('autoResolve.start');
             await this.resolveFromUrl(undefined, { stripLocation: true });
         }
     }
@@ -70,6 +91,7 @@ export class LinkMeController {
         if (!cfg || !this.httpClient) {
             return null;
         }
+        this.debugLog('deferred.claim.start');
         try {
             const body: JsonMap = { platform: 'web' };
             const device = this.environment.buildDevicePayload(cfg.sendDeviceInfo);
@@ -83,14 +105,19 @@ export class LinkMeController {
                 body: JSON.stringify(body),
             });
             if (!res.ok || !res.data) {
+                this.debugLog('deferred.claim.http_error', { status: res.status });
                 return null;
             }
             const payload = normalizePayload(res.data);
             if (payload) {
                 this.emit(payload);
+                this.debugLog('deferred.claim.success', { cid: payload.cid ?? null, duplicate: payload.duplicate ?? false });
+            } else {
+                this.debugLog('deferred.claim.empty');
             }
             return payload;
-        } catch {
+        } catch (err) {
+            this.debugLog('deferred.claim.error', { error: err instanceof Error ? err.message : String(err) });
             return null;
         }
     }
@@ -144,12 +171,15 @@ export class LinkMeController {
         if (!cfg || !this.httpClient || !rawUrl) {
             return null;
         }
+        this.debugLog('processUrl.start', { url: rawUrl });
         const parsed = parseUrl(rawUrl, cfg.origin);
         if (!parsed) {
+            this.debugLog('processUrl.parse_failed', { url: rawUrl });
             return null;
         }
         const extraction = extractCid(parsed);
         if (extraction.cid) {
+            this.debugLog('processUrl.cid_detected', { cid: extraction.cid });
             if (this.seenCids.has(extraction.cid)) {
                 const cached = this.lastPayload;
                 if (cached && cached.cid === extraction.cid) {
@@ -164,14 +194,21 @@ export class LinkMeController {
                     this.environment.replaceUrl(extraction.sanitizedHref);
                 }
                 this.emit(payload);
+                this.debugLog('processUrl.cid_success', { cid: extraction.cid });
+            } else {
+                this.debugLog('processUrl.cid_miss', { cid: extraction.cid });
             }
             return payload;
         }
         if (cfg.resolveUniversalLinks && isSameOrigin(parsed.origin, cfg.origin)) {
+            this.debugLog('processUrl.universal', { url: parsed.href });
             const payload = await this.resolveUniversalLink(parsed.href);
             if (payload) {
                 this.emit(payload);
+                this.debugLog('processUrl.universal_success', { url: parsed.href });
                 return payload;
+            } else {
+                this.debugLog('processUrl.universal_miss', { url: parsed.href });
             }
         }
         return null;
@@ -182,6 +219,7 @@ export class LinkMeController {
         if (!cfg || !this.httpClient) {
             return null;
         }
+        this.debugLog('resolveCid.request', { cid });
         try {
             const headers = this.buildHeaders(false);
             const device = this.environment.buildDevicePayload(cfg.sendDeviceInfo);
@@ -193,10 +231,14 @@ export class LinkMeController {
                 headers,
             });
             if (!res.ok || !res.data) {
+                this.debugLog('resolveCid.http_error', { cid, status: res.status });
                 return null;
             }
-            return normalizePayload(res.data, cid);
-        } catch {
+            const payload = normalizePayload(res.data, cid);
+            this.debugLog('resolveCid.success', { cid, resolved: payload != null });
+            return payload;
+        } catch (err) {
+            this.debugLog('resolveCid.error', { cid, error: err instanceof Error ? err.message : String(err) });
             return null;
         }
     }
@@ -206,6 +248,7 @@ export class LinkMeController {
         if (!cfg || !this.httpClient) {
             return null;
         }
+        this.debugLog('resolveUniversal.request', { url });
         try {
             const body: JsonMap = { url };
             const device = this.environment.buildDevicePayload(cfg.sendDeviceInfo);
@@ -218,10 +261,14 @@ export class LinkMeController {
                 body: JSON.stringify(body),
             });
             if (!res.ok || !res.data) {
+                this.debugLog('resolveUniversal.http_error', { url, status: res.status });
                 return null;
             }
-            return normalizePayload(res.data);
-        } catch {
+            const payload = normalizePayload(res.data);
+            this.debugLog('resolveUniversal.success', { url, resolved: payload != null });
+            return payload;
+        } catch (err) {
+            this.debugLog('resolveUniversal.error', { url, error: err instanceof Error ? err.message : String(err) });
             return null;
         }
     }

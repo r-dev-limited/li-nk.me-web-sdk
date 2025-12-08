@@ -14,6 +14,7 @@ export type LinkMeWebConfig = {
     appId?: string;
     appKey?: string;
     fetch?: FetchLike;
+    debug?: boolean;
     autoResolve?: boolean;
     autoListen?: boolean;
     stripCid?: boolean;
@@ -26,6 +27,7 @@ export type NormalizedConfig = {
     origin: string;
     appId?: string;
     appKey?: string;
+    debug: boolean;
     autoResolve: boolean;
     autoListen: boolean;
     stripCid: boolean;

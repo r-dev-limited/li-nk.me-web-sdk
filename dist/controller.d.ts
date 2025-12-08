@@ -19,6 +19,7 @@ export declare class LinkMeController {
     private readonly seenCids;
     private unsubscribeNavigation;
     constructor(deps?: LinkMeControllerDeps);
+    private debugLog;
     configure(config: LinkMeWebConfig): Promise<void>;
     resolveFromUrl(url?: string, opts?: ProcessUrlOptions): Promise<LinkMePayload | null>;
     handleLink(url: string): Promise<LinkMePayload | null>;

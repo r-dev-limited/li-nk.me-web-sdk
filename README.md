@@ -20,6 +20,7 @@ import { configure, resolveFromUrl } from '@li-nk/web-sdk';
 await configure({
   appId: 'app_123',
   appKey: 'lk_live_read_only_key',
+  debug: process.env.NODE_ENV !== 'production',
 });
 
 const initial = await resolveFromUrl();

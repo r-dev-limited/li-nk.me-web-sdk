@@ -10,6 +10,7 @@ export function normalizeConfig(config, env) {
         origin,
         appId: config.appId,
         appKey: config.appKey,
+        debug: config.debug ?? false,
         autoResolve: config.autoResolve ?? isBrowser,
         autoListen: config.autoListen ?? isBrowser,
         stripCid: config.stripCid ?? true,
