@@ -1,6 +1,6 @@
 {
   "name": "@li-nk.me/web-sdk",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "Zero-dependency browser SDK for LinkMe deep and deferred links.",
   "type": "module",
   "main": "dist/index.js",
