@@ -105,7 +105,7 @@ describe('LinkMeController', () => {
         });
 
         const payload = await controller.resolveFromUrl();
-        expect(payload).toEqual({ path: '/offer', cid: 'abc123' });
+        expect(payload).toEqual({ path: '/offer', cid: 'abc123', isLinkMe: true });
         expect(environment.replacedUrl).toBe('https://links.example/campaign');
     });
 
@@ -134,8 +134,8 @@ describe('LinkMeController', () => {
         });
 
         const deferred = await controller.claimDeferredIfAvailable();
-        expect(deferred).toEqual({ linkId: 'lnk_1', path: '/welcome' });
-        expect(emitted).toEqual({ linkId: 'lnk_1', path: '/welcome' });
+        expect(deferred).toEqual({ linkId: 'lnk_1', path: '/welcome', isLinkMe: true });
+        expect(emitted).toEqual({ linkId: 'lnk_1', path: '/welcome', isLinkMe: true });
 
         const request = httpClient.requests.find((r) => r.url.endsWith('/api/deferred/claim'));
         expect(request?.init?.headers?.['Content-Type']).toBe('application/json');

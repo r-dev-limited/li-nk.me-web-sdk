@@ -13,6 +13,8 @@ export function normalizePayload(raw: any, fallbackCid?: string): LinkMePayload 
     if (utm) payload.utm = utm;
     const custom = toRecordOfString(raw.custom);
     if (custom) payload.custom = custom;
+    if (typeof raw.url === 'string') payload.url = raw.url;
+    if (typeof raw.isLinkMe === 'boolean') payload.isLinkMe = raw.isLinkMe;
     if (typeof raw.cid === 'string') payload.cid = raw.cid;
     else if (fallbackCid) payload.cid = fallbackCid;
     if (typeof raw.duplicate === 'boolean') payload.duplicate = raw.duplicate;

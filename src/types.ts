@@ -4,6 +4,8 @@ export type LinkMePayload = {
     params?: Record<string, string>;
     utm?: Record<string, string>;
     custom?: Record<string, string>;
+    url?: string;
+    isLinkMe?: boolean;
     cid?: string;
     duplicate?: boolean;
 };

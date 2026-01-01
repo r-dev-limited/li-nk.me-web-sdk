@@ -11,6 +11,35 @@ type ProcessUrlOptions = {
 
 type JsonMap = Record<string, any>;
 
+const UTM_KEYS = new Set([
+    'utm_source',
+    'utm_medium',
+    'utm_campaign',
+    'utm_term',
+    'utm_content',
+    'utm_id',
+    'utm_source_platform',
+    'utm_creative_format',
+    'utm_marketing_tactic',
+    'tags',
+]);
+
+function splitSearchParams(searchParams: URLSearchParams): { params?: Record<string, string>; utm?: Record<string, string> } {
+    const params: Record<string, string> = {};
+    const utm: Record<string, string> = {};
+    for (const [key, value] of searchParams.entries()) {
+        if (UTM_KEYS.has(key)) {
+            utm[key] = value;
+        } else {
+            params[key] = value;
+        }
+    }
+    return {
+        params: Object.keys(params).length ? params : undefined,
+        utm: Object.keys(utm).length ? utm : undefined,
+    };
+}
+
 export interface LinkMeControllerDeps {
     environment?: LinkMeEnvironment;
     httpClientFactory?: (fetchImpl: FetchLike) => HttpClient;
@@ -110,6 +139,9 @@ export class LinkMeController {
             }
             const payload = normalizePayload(res.data);
             if (payload) {
+                if (payload.isLinkMe === undefined) {
+                    payload.isLinkMe = true;
+                }
                 this.emit(payload);
                 this.debugLog('deferred.claim.success', { cid: payload.cid ?? null, duplicate: payload.duplicate ?? false });
             } else {
@@ -235,6 +267,9 @@ export class LinkMeController {
                 return null;
             }
             const payload = normalizePayload(res.data, cid);
+            if (payload && payload.isLinkMe === undefined) {
+                payload.isLinkMe = true;
+            }
             this.debugLog('resolveCid.success', { cid, resolved: payload != null });
             return payload;
         } catch (err) {
@@ -261,10 +296,22 @@ export class LinkMeController {
                 body: JSON.stringify(body),
             });
             if (!res.ok || !res.data) {
+                const errorCode = (res.data as any)?.error;
+                if (errorCode === 'domain_not_found') {
+                    const parsed = parseUrl(url, cfg.origin);
+                    if (parsed) {
+                        const fallback = this.buildBasicUniversalPayload(parsed);
+                        this.debugLog('resolveUniversal.non_linkme', { url });
+                        return fallback;
+                    }
+                }
                 this.debugLog('resolveUniversal.http_error', { url, status: res.status });
                 return null;
             }
             const payload = normalizePayload(res.data);
+            if (payload && payload.isLinkMe === undefined) {
+                payload.isLinkMe = true;
+            }
             this.debugLog('resolveUniversal.success', { url, resolved: payload != null });
             return payload;
         } catch (err) {
@@ -285,6 +332,17 @@ export class LinkMeController {
             headers['x-api-key'] = this.config.appKey;
         }
         return headers;
+    }
+
+    private buildBasicUniversalPayload(url: URL): LinkMePayload {
+        const { params, utm } = splitSearchParams(url.searchParams);
+        return {
+            path: url.pathname || '/',
+            params,
+            utm,
+            url: url.toString(),
+            isLinkMe: false,
+        };
     }
 
     private emit(payload: LinkMePayload): void {
