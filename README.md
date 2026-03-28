@@ -47,7 +47,6 @@ if (initial?.path) {
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `baseUrl` | `string` | `https://li-nk.me` | Your custom edge domain. |
 | `appId` | `string` | — | Required. |
 | `appKey` | `string` | — | Optional read-only key. |
 | `fetch` | `FetchLike` | — | Custom `fetch` for SSR. |
