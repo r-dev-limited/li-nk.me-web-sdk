@@ -108,7 +108,7 @@ jobs:
       - name: Validate publish archive
         run: |
           npm pack --dry-run --json --ignore-scripts > pack.json
-          node -e "const raw=require('./pack.json'); const p=Array.isArray(raw)?raw[0]:raw; if(!p || !Array.isArray(p.files)) process.exit(1); const files=p.files.map(f=>f.path); if(!files.includes('LICENSE') || files.some(f=>/\\.test\\./.test(f))) process.exit(1); console.log('archive-ok')"
+          node -e "const raw=require('./pack.json'); const findFiles=v=>{if(!v||typeof v!=='object')return null;if(Array.isArray(v.files))return v.files;for(const child of Object.values(v)){const found=findFiles(child);if(found)return found}return null}; const entries=findFiles(raw); if(!entries) { console.error('npm pack JSON did not contain a files list'); process.exit(1) }; const files=entries.map(f=>typeof f==='string'?f:f.path); if(!files.includes('LICENSE') || files.some(f=>/\\.test\\./.test(f))) process.exit(1); console.log('archive-ok')"
 
       - name: Smoke test packed consumer
         run: |
