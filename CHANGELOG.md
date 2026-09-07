@@ -2,6 +2,13 @@
 
 All notable changes to the LinkMe Web SDK.
 
+## 0.2.14
+
+- Sends analytics using Edge's `type` and serialized `detail` fields with link/CID context.
+- Preserves forced-web payload fields, honors `stripCid`, adds browser redirect ownership, and supports disposal and identity reset.
+- Preserves `cid`/`duplicate` attribution fields and rejects empty or unknown response objects.
+- Upgrades the test/build toolchain to Vitest 5, coverage-v8 5, TypeScript 6, and rimraf 6; production builds exclude tests.
+
 ## 0.2.13
 
 - Tightens deferred claim parsing to LinkMe hosts/token format only.
