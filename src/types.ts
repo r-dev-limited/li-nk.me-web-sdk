@@ -8,6 +8,8 @@ export type LinkMePayload = {
     isLinkMe?: boolean;
     cid?: string;
     duplicate?: boolean;
+    forceRedirectWeb?: boolean;
+    webFallbackUrl?: string;
 };
 
 export type LinkListener = (payload: LinkMePayload) => void;

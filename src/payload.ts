@@ -5,19 +5,23 @@ export function normalizePayload(raw: any, fallbackCid?: string): LinkMePayload 
         return null;
     }
     const payload: LinkMePayload = {};
-    if (typeof raw.linkId === 'string') payload.linkId = raw.linkId;
-    if (typeof raw.path === 'string') payload.path = raw.path;
+    let hasPayloadField = false;
+    if (typeof raw.linkId === 'string') { payload.linkId = raw.linkId; hasPayloadField = true; }
+    if (typeof raw.path === 'string') { payload.path = raw.path; hasPayloadField = true; }
     const params = toRecordOfString(raw.params);
-    if (params) payload.params = params;
+    if (params) { payload.params = params; hasPayloadField = true; }
     const utm = toRecordOfString(raw.utm);
-    if (utm) payload.utm = utm;
+    if (utm) { payload.utm = utm; hasPayloadField = true; }
     const custom = toRecordOfString(raw.custom);
-    if (custom) payload.custom = custom;
-    if (typeof raw.url === 'string') payload.url = raw.url;
-    if (typeof raw.isLinkMe === 'boolean') payload.isLinkMe = raw.isLinkMe;
-    if (typeof raw.cid === 'string') payload.cid = raw.cid;
-    else if (fallbackCid) payload.cid = fallbackCid;
-    if (typeof raw.duplicate === 'boolean') payload.duplicate = raw.duplicate;
+    if (custom) { payload.custom = custom; hasPayloadField = true; }
+    if (typeof raw.url === 'string') { payload.url = raw.url; hasPayloadField = true; }
+    if (typeof raw.isLinkMe === 'boolean') { payload.isLinkMe = raw.isLinkMe; hasPayloadField = true; }
+    if (typeof raw.cid === 'string') { payload.cid = raw.cid; hasPayloadField = true; }
+    if (typeof raw.duplicate === 'boolean') { payload.duplicate = raw.duplicate; hasPayloadField = true; }
+    if (typeof raw.forceRedirectWeb === 'boolean') { payload.forceRedirectWeb = raw.forceRedirectWeb; hasPayloadField = true; }
+    if (typeof raw.webFallbackUrl === 'string') { payload.webFallbackUrl = raw.webFallbackUrl; hasPayloadField = true; }
+    if (!hasPayloadField) return null;
+    if (payload.cid === undefined && fallbackCid) payload.cid = fallbackCid;
     return payload;
 }
 

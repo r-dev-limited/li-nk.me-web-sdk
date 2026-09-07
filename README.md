@@ -172,11 +172,14 @@ export class LinkMeService implements OnDestroy {
 | `resolveFromUrl(url?)` | Resolve the current (or given) URL. Returns `LinkMePayload \| null` |
 | `handleLink(url)` | Resolve a specific URL without stripping the location |
 | `onLink(callback)` | Subscribe to future payloads (returns `{ remove }`) |
+| `dispose()` | Remove navigation listeners and reset controller state |
 | `claimDeferredIfAvailable()` | Fingerprint-based deferred claim |
 | `track(event, properties?)` | Send analytics events |
-| `setUserId(userId)` | Associate a user ID with events |
+| `setUserId(userId)` | Associate a user ID with events; pass `null` to clear it |
 | `getLastPayload()` | Return the most recently resolved payload |
 | `extractCidFromUrl(url)` | Extract a `cid` parameter from a URL string |
+
+Payloads with `forceRedirectWeb: true` and a non-empty `webFallbackUrl` are handed to the browser without emitting `onLink`. Direct resolution methods still return the resolved payload so callers can observe the redirect decision.
 
 ### Config options
 

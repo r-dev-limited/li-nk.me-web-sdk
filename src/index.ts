@@ -20,7 +20,7 @@ export function claimDeferredIfAvailable(): Promise<LinkMePayload | null> {
     return defaultController.claimDeferredIfAvailable();
 }
 
-export function setUserId(userId: string): void {
+export function setUserId(userId: string | null): void {
     defaultController.setUserId(userId);
 }
 
@@ -34,6 +34,10 @@ export function onLink(listener: LinkListener): { remove: () => void } {
 
 export function getLastPayload(): LinkMePayload | null {
     return defaultController.getLastPayload();
+}
+
+export function dispose(): void {
+    defaultController.dispose();
 }
 
 export function extractCidFromUrl(url: string): string | null {

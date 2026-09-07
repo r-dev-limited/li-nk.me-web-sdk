@@ -5,6 +5,7 @@ export interface LinkMeEnvironment {
     getFetch(): FetchLike | undefined;
     getCurrentHref(): string | null;
     replaceUrl(url: string): void;
+    openExternalUrl(url: string): void;
     subscribeToNavigation(onChange: () => void): () => void;
     buildDevicePayload(sendDeviceInfo: boolean): Record<string, any> | undefined;
 }
@@ -28,7 +29,8 @@ export class BrowserEnvironment implements LinkMeEnvironment {
     }
 
     getFetch(): FetchLike | undefined {
-        return this.win?.fetch ?? (typeof fetch === 'function' ? fetch.bind(globalThis) : undefined);
+        if (this.win?.fetch) return this.win.fetch.bind(this.win);
+        return typeof fetch === 'function' ? fetch.bind(globalThis) : undefined;
     }
 
     getCurrentHref(): string | null {
@@ -49,6 +51,13 @@ export class BrowserEnvironment implements LinkMeEnvironment {
         } catch {
             /* noop */
         }
+    }
+
+    openExternalUrl(url: string): void {
+        if (!this.win) {
+            return;
+        }
+        this.win.location.assign(url);
     }
 
     subscribeToNavigation(onChange: () => void): () => void {

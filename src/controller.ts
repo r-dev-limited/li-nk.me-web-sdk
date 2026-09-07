@@ -93,12 +93,12 @@ export class LinkMeController {
         if (normalized.autoListen) {
             this.debugLog('navigation.listen');
             this.unsubscribeNavigation = this.environment.subscribeToNavigation(() => {
-                void this.resolveFromUrl();
+                void this.resolveFromUrl(undefined, { stripLocation: normalized.stripCid });
             });
         }
         if (normalized.autoResolve) {
             this.debugLog('autoResolve.start');
-            await this.resolveFromUrl(undefined, { stripLocation: true });
+            await this.resolveFromUrl(undefined, { stripLocation: normalized.stripCid });
         }
     }
 
@@ -108,7 +108,7 @@ export class LinkMeController {
             return null;
         }
         const targetUrl = url ?? this.environment.getCurrentHref();
-        return await this.processUrl(targetUrl, { stripLocation: opts?.stripLocation ?? url === undefined });
+        return await this.processUrl(targetUrl, { stripLocation: opts?.stripLocation ?? cfg.stripCid });
     }
 
     async handleLink(url: string): Promise<LinkMePayload | null> {
@@ -142,7 +142,9 @@ export class LinkMeController {
                 if (payload.isLinkMe === undefined) {
                     payload.isLinkMe = true;
                 }
-                this.emit(payload);
+                if (!this.handleForcedWebRedirect(payload)) {
+                    this.emit(payload);
+                }
                 this.debugLog('deferred.claim.success', { cid: payload.cid ?? null, duplicate: payload.duplicate ?? false });
             } else {
                 this.debugLog('deferred.claim.empty');
@@ -154,8 +156,8 @@ export class LinkMeController {
         }
     }
 
-    setUserId(userId: string): void {
-        this.userId = userId;
+    setUserId(userId: string | null): void {
+        this.userId = userId ?? undefined;
     }
 
     async track(event: string, properties?: Record<string, any>): Promise<void> {
@@ -165,15 +167,21 @@ export class LinkMeController {
         }
         try {
             const body: JsonMap = {
-                event,
+                type: event,
                 platform: 'web',
                 timestamp: Math.floor(Date.now() / 1000),
             };
+            if (this.lastPayload?.cid) {
+                body.cid = this.lastPayload.cid;
+            }
+            if (this.lastPayload?.linkId) {
+                body.linkId = this.lastPayload.linkId;
+            }
             if (this.userId) {
                 body.userId = this.userId;
             }
             if (properties && typeof properties === 'object') {
-                body.props = properties;
+                body.detail = JSON.stringify(properties);
             }
             await this.httpClient.request(`${cfg.apiBaseUrl}/app-events`, {
                 method: 'POST',
@@ -196,6 +204,16 @@ export class LinkMeController {
 
     getLastPayload(): LinkMePayload | null {
         return this.lastPayload;
+    }
+
+    dispose(): void {
+        this.detachNavigation();
+        this.listeners.clear();
+        this.httpClient = undefined;
+        this.config = undefined;
+        this.lastPayload = null;
+        this.seenCids.clear();
+        this.userId = undefined;
     }
 
     private async processUrl(rawUrl: string | null | undefined, opts: ProcessUrlOptions): Promise<LinkMePayload | null> {
@@ -225,7 +243,9 @@ export class LinkMeController {
                 if (opts.stripLocation && extraction.sanitizedHref) {
                     this.environment.replaceUrl(extraction.sanitizedHref);
                 }
-                this.emit(payload);
+                if (!this.handleForcedWebRedirect(payload)) {
+                    this.emit(payload);
+                }
                 this.debugLog('processUrl.cid_success', { cid: extraction.cid });
             } else {
                 this.debugLog('processUrl.cid_miss', { cid: extraction.cid });
@@ -236,7 +256,9 @@ export class LinkMeController {
             this.debugLog('processUrl.universal', { url: parsed.href });
             const payload = await this.resolveUniversalLink(parsed.href);
             if (payload) {
-                this.emit(payload);
+                if (!this.handleForcedWebRedirect(payload)) {
+                    this.emit(payload);
+                }
                 this.debugLog('processUrl.universal_success', { url: parsed.href });
                 return payload;
             } else {
@@ -332,6 +354,28 @@ export class LinkMeController {
             headers['x-api-key'] = this.config.appKey;
         }
         return headers;
+    }
+
+    private handleForcedWebRedirect(payload: LinkMePayload): boolean {
+        if (payload.forceRedirectWeb !== true) {
+            return false;
+        }
+        const target = payload.webFallbackUrl?.trim();
+        if (!target) {
+            this.debugLog('force_web.enabled_but_missing_url', { linkId: payload.linkId ?? null });
+            return false;
+        }
+        try {
+            this.environment.openExternalUrl(target);
+            this.debugLog('force_web.browser_open', { linkId: payload.linkId ?? null, url: target });
+            return true;
+        } catch (err) {
+            this.debugLog('force_web.browser_open_failed', {
+                url: target,
+                error: err instanceof Error ? err.message : String(err),
+            });
+            return false;
+        }
     }
 
     private buildBasicUniversalPayload(url: URL): LinkMePayload {
