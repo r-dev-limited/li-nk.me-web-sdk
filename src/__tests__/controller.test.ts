@@ -50,10 +50,10 @@ class MockEnvironment implements LinkMeEnvironment {
 type RecordedRequest = { url: string; init?: HttpRequestInit };
 
 class MockHttpClient implements HttpClient {
-    private responders = new Map<string, () => Response>();
+    private responders = new Map<string, () => Response | Promise<Response>>();
     readonly requests: RecordedRequest[] = [];
 
-    when(method: string, url: string, responder: () => Response): void {
+    when(method: string, url: string, responder: () => Response | Promise<Response>): void {
         const key = this.key(method, url);
         this.responders.set(key, responder);
     }
@@ -174,6 +174,38 @@ describe('LinkMeController', () => {
         expect(environment.replacedUrl).toBeNull();
         controller.dispose();
         expect(await controller.resolveFromUrl()).toBeNull();
+    });
+
+    it('drops an in-flight response after reconfiguration', async () => {
+        let releaseOldResponse!: (response: Response) => void;
+        const oldResponse = new Promise<Response>((resolve) => {
+            releaseOldResponse = resolve;
+        });
+        httpClient.when('GET', 'https://old.example/api/deeplink?cid=old123', () => oldResponse);
+        httpClient.when(
+            'GET',
+            'https://new.example/api/deeplink?cid=new123',
+            () => new Response(JSON.stringify({ cid: 'new123', path: '/new' }), { status: 200 })
+        );
+        httpClient.when('POST', 'https://new.example/api/app-events', () => new Response(null, { status: 204 }));
+        await controller.configure({ baseUrl: 'https://old.example', autoListen: false, autoResolve: false, fetch: unusedFetch });
+        controller.setUserId('old-user');
+        const received: LinkMePayload[] = [];
+        controller.onLink((payload) => received.push(payload));
+
+        const oldRequest = controller.handleLink('https://old.example/?cid=old123');
+        await Promise.resolve();
+        await controller.configure({ baseUrl: 'https://new.example', autoListen: false, autoResolve: false, fetch: unusedFetch });
+        releaseOldResponse(new Response(JSON.stringify({ cid: 'old123', path: '/old' }), { status: 200 }));
+
+        await expect(oldRequest).resolves.toBeNull();
+        expect(received).toHaveLength(0);
+        expect(controller.getLastPayload()).toBeNull();
+        await expect(controller.handleLink('https://new.example/?cid=new123')).resolves.toMatchObject({ path: '/new' });
+        expect(received).toHaveLength(1);
+        await controller.track('open');
+        const event = httpClient.requests.find((request) => request.url.endsWith('/api/app-events'));
+        expect(JSON.parse(event!.init!.body as string)).not.toHaveProperty('userId');
     });
 
     it('rejects empty or unknown response objects', async () => {

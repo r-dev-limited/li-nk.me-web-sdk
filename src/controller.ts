@@ -56,6 +56,11 @@ export class LinkMeController {
     private userId?: string;
     private readonly seenCids = new Set<string>();
     private unsubscribeNavigation: (() => void) | null = null;
+    /**
+     * Monotonically increasing lifecycle token. Requests started under an
+     * earlier configuration must never publish results into a newer one.
+     */
+    private generation = 0;
 
     constructor(deps?: LinkMeControllerDeps) {
         this.environment = deps?.environment ?? new BrowserEnvironment();
@@ -76,6 +81,7 @@ export class LinkMeController {
     }
 
     async configure(config: LinkMeWebConfig): Promise<void> {
+        const generation = ++this.generation;
         const normalized = normalizeConfig(config, this.environment);
         const fetchImpl = config.fetch ?? this.environment.getFetch();
         if (typeof fetchImpl !== 'function') {
@@ -83,6 +89,9 @@ export class LinkMeController {
         }
         this.config = normalized;
         this.httpClient = this.httpClientFactory(fetchImpl);
+        this.lastPayload = null;
+        this.seenCids.clear();
+        this.userId = undefined;
         this.debugLog('configured', {
             baseUrl: normalized.baseUrl,
             appId: normalized.appId ?? null,
@@ -98,26 +107,30 @@ export class LinkMeController {
         }
         if (normalized.autoResolve) {
             this.debugLog('autoResolve.start');
-            await this.resolveFromUrl(undefined, { stripLocation: normalized.stripCid });
+            const targetUrl = this.environment.getCurrentHref();
+            await this.processUrl(targetUrl, { stripLocation: normalized.stripCid }, generation);
         }
     }
 
     async resolveFromUrl(url?: string, opts?: ProcessUrlOptions): Promise<LinkMePayload | null> {
         const cfg = this.config;
+        const generation = this.generation;
         if (!cfg) {
             return null;
         }
         const targetUrl = url ?? this.environment.getCurrentHref();
-        return await this.processUrl(targetUrl, { stripLocation: opts?.stripLocation ?? cfg.stripCid });
+        return await this.processUrl(targetUrl, { stripLocation: opts?.stripLocation ?? cfg.stripCid }, generation);
     }
 
     async handleLink(url: string): Promise<LinkMePayload | null> {
-        return await this.processUrl(url, { stripLocation: false });
+        return await this.processUrl(url, { stripLocation: false }, this.generation);
     }
 
     async claimDeferredIfAvailable(): Promise<LinkMePayload | null> {
         const cfg = this.config;
-        if (!cfg || !this.httpClient) {
+        const httpClient = this.httpClient;
+        const generation = this.generation;
+        if (!cfg || !httpClient) {
             return null;
         }
         this.debugLog('deferred.claim.start');
@@ -128,11 +141,14 @@ export class LinkMeController {
                 body.device = device;
             }
             const headers = this.buildHeaders(true);
-            const res = await requestJson<JsonMap>(this.httpClient, `${cfg.apiBaseUrl}/deferred/claim`, {
+            const res = await requestJson<JsonMap>(httpClient, `${cfg.apiBaseUrl}/deferred/claim`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(body),
             });
+            if (!this.isCurrent(generation, cfg, httpClient)) {
+                return null;
+            }
             if (!res.ok || !res.data) {
                 this.debugLog('deferred.claim.http_error', { status: res.status });
                 return null;
@@ -207,6 +223,7 @@ export class LinkMeController {
     }
 
     dispose(): void {
+        this.generation += 1;
         this.detachNavigation();
         this.listeners.clear();
         this.httpClient = undefined;
@@ -216,9 +233,10 @@ export class LinkMeController {
         this.userId = undefined;
     }
 
-    private async processUrl(rawUrl: string | null | undefined, opts: ProcessUrlOptions): Promise<LinkMePayload | null> {
+    private async processUrl(rawUrl: string | null | undefined, opts: ProcessUrlOptions, generation: number): Promise<LinkMePayload | null> {
         const cfg = this.config;
-        if (!cfg || !this.httpClient || !rawUrl) {
+        const httpClient = this.httpClient;
+        if (!cfg || !httpClient || !rawUrl || !this.isCurrent(generation, cfg, httpClient)) {
             return null;
         }
         this.debugLog('processUrl.start', { url: rawUrl });
@@ -236,7 +254,10 @@ export class LinkMeController {
                     return cached;
                 }
             }
-            const payload = await this.resolveCid(extraction.cid);
+            const payload = await this.resolveCid(extraction.cid, cfg, httpClient);
+            if (!this.isCurrent(generation, cfg, httpClient)) {
+                return null;
+            }
             if (payload) {
                 payload.cid = payload.cid ?? extraction.cid;
                 this.seenCids.add(extraction.cid);
@@ -254,7 +275,10 @@ export class LinkMeController {
         }
         if (cfg.resolveUniversalLinks && isSameOrigin(parsed.origin, cfg.origin)) {
             this.debugLog('processUrl.universal', { url: parsed.href });
-            const payload = await this.resolveUniversalLink(parsed.href);
+            const payload = await this.resolveUniversalLink(parsed.href, cfg, httpClient);
+            if (!this.isCurrent(generation, cfg, httpClient)) {
+                return null;
+            }
             if (payload) {
                 if (!this.handleForcedWebRedirect(payload)) {
                     this.emit(payload);
@@ -268,11 +292,7 @@ export class LinkMeController {
         return null;
     }
 
-    private async resolveCid(cid: string): Promise<LinkMePayload | null> {
-        const cfg = this.config;
-        if (!cfg || !this.httpClient) {
-            return null;
-        }
+    private async resolveCid(cid: string, cfg: NormalizedConfig, httpClient: HttpClient): Promise<LinkMePayload | null> {
         this.debugLog('resolveCid.request', { cid });
         try {
             const headers = this.buildHeaders(false);
@@ -280,7 +300,7 @@ export class LinkMeController {
             if (device) {
                 headers['x-linkme-device'] = JSON.stringify(device);
             }
-            const res = await requestJson<JsonMap>(this.httpClient, `${cfg.apiBaseUrl}/deeplink?cid=${encodeURIComponent(cid)}`, {
+            const res = await requestJson<JsonMap>(httpClient, `${cfg.apiBaseUrl}/deeplink?cid=${encodeURIComponent(cid)}`, {
                 method: 'GET',
                 headers,
             });
@@ -300,11 +320,7 @@ export class LinkMeController {
         }
     }
 
-    private async resolveUniversalLink(url: string): Promise<LinkMePayload | null> {
-        const cfg = this.config;
-        if (!cfg || !this.httpClient) {
-            return null;
-        }
+    private async resolveUniversalLink(url: string, cfg: NormalizedConfig, httpClient: HttpClient): Promise<LinkMePayload | null> {
         this.debugLog('resolveUniversal.request', { url });
         try {
             const body: JsonMap = { url };
@@ -312,7 +328,7 @@ export class LinkMeController {
             if (device) {
                 body.device = device;
             }
-            const res = await requestJson<JsonMap>(this.httpClient, `${cfg.apiBaseUrl}/deeplink/resolve-url`, {
+            const res = await requestJson<JsonMap>(httpClient, `${cfg.apiBaseUrl}/deeplink/resolve-url`, {
                 method: 'POST',
                 headers: this.buildHeaders(true),
                 body: JSON.stringify(body),
@@ -407,5 +423,9 @@ export class LinkMeController {
             /* noop */
         }
         this.unsubscribeNavigation = null;
+    }
+
+    private isCurrent(generation: number, cfg: NormalizedConfig, httpClient: HttpClient): boolean {
+        return this.generation === generation && this.config === cfg && this.httpClient === httpClient;
     }
 }

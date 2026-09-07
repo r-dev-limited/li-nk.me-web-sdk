@@ -2,6 +2,11 @@
 
 All notable changes to the LinkMe Web SDK.
 
+## 0.2.15
+
+- Drops in-flight link and deferred-claim responses after disposal or reconfiguration so an older app configuration cannot emit stale payloads.
+- Adds regression coverage for cross-configuration response isolation.
+
 ## 0.2.14
 
 - Sends analytics using Edge's `type` and serialized `detail` fields with link/CID context.
