@@ -228,6 +228,8 @@ await client.configure({ appId: 'app_123' });
 
 ## Testing
 
+For SDK development, run `nvm install && nvm use` to select the patched Node 24.22.1 LTS runtime. CI tests Node 22.23.4 and 24.22.1 and audits the independent lockfile.
+
 - Run your dev server, click a LinkMe slug pointing to your domain, and confirm the page routes without a full reload.
 - Open the same slug in an incognito window to validate the deferred flow.
 - Use the browser network tab to inspect `/api/deeplink` and `/api/deferred/claim` requests.
