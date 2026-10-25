@@ -74,7 +74,10 @@ describe('Web SDK contract helpers', () => {
         const config = normalizeConfig({ baseUrl: 'https://links.example/', autoResolve: false }, { isBrowser: () => false } as any);
         expect(config).toMatchObject({ baseUrl: 'https://links.example', apiBaseUrl: 'https://links.example/api', autoResolve: false, autoListen: false });
         const browserDefaults = normalizeConfig({}, { isBrowser: () => true } as any);
-        expect(browserDefaults).toMatchObject({ baseUrl: 'https://li-nk.me', autoResolve: true, autoListen: true, stripCid: true, sendDeviceInfo: true });
+        expect(browserDefaults).toMatchObject({ baseUrl: 'https://li-nk.me', autoResolve: true, autoListen: true, stripCid: true, sendDeviceInfo: true, requestTimeoutMs: 15_000 });
+        for (const requestTimeoutMs of [0, -1, NaN, Infinity, 1.5, 2_147_483_648]) {
+            expect(() => normalizeConfig({ requestTimeoutMs }, { isBrowser: () => false } as any)).toThrow(RangeError);
+        }
         const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
         const client = new FetchHttpClient(fetchImpl);
         const response = await client.request('/health');

@@ -1,3 +1,4 @@
+import { RequestScope } from './requestScope.js';
 import { BrowserEnvironment, type LinkMeEnvironment } from './environment.js';
 import { normalizeConfig } from './config.js';
 import { extractCid, isSameOrigin, parseUrl } from './url.js';
@@ -61,6 +62,7 @@ export class LinkMeController {
      * earlier configuration must never publish results into a newer one.
      */
     private generation = 0;
+    private readonly requests = new RequestScope();
 
     constructor(deps?: LinkMeControllerDeps) {
         this.environment = deps?.environment ?? new BrowserEnvironment();
@@ -81,12 +83,13 @@ export class LinkMeController {
     }
 
     async configure(config: LinkMeWebConfig): Promise<void> {
-        const generation = ++this.generation;
         const normalized = normalizeConfig(config, this.environment);
         const fetchImpl = config.fetch ?? this.environment.getFetch();
         if (typeof fetchImpl !== 'function') {
             throw new Error('fetch is not available; provide config.fetch');
         }
+        this.cancelPendingRequests();
+        const generation = this.generation;
         this.config = normalized;
         this.httpClient = this.httpClientFactory(fetchImpl);
         this.lastPayload = null;
@@ -141,7 +144,7 @@ export class LinkMeController {
                 body.device = device;
             }
             const headers = this.buildHeaders(true);
-            const res = await requestJson<JsonMap>(httpClient, `${cfg.apiBaseUrl}/deferred/claim`, {
+            const res = await this.requestJson<JsonMap>(cfg, httpClient, `${cfg.apiBaseUrl}/deferred/claim`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(body),
@@ -165,7 +168,7 @@ export class LinkMeController {
             } else {
                 this.debugLog('deferred.claim.empty');
             }
-            return payload;
+            return this.isCurrent(generation, cfg, httpClient) ? payload : null;
         } catch (err) {
             this.debugLog('deferred.claim.error', { error: err instanceof Error ? err.message : String(err) });
             return null;
@@ -173,6 +176,7 @@ export class LinkMeController {
     }
 
     setUserId(userId: string | null): void {
+        if (this.userId !== (userId ?? undefined)) this.cancelPendingRequests();
         this.userId = userId ?? undefined;
     }
 
@@ -199,10 +203,15 @@ export class LinkMeController {
             if (properties && typeof properties === 'object') {
                 body.detail = JSON.stringify(properties);
             }
-            await this.httpClient.request(`${cfg.apiBaseUrl}/app-events`, {
-                method: 'POST',
-                headers: this.buildHeaders(true),
-                body: JSON.stringify(body),
+            const client = this.httpClient;
+            await this.requests.run(cfg.requestTimeoutMs, async (signal) => {
+                const response = await client.request(`${cfg.apiBaseUrl}/app-events`, {
+                    method: 'POST',
+                    headers: this.buildHeaders(true),
+                    body: JSON.stringify(body),
+                    signal,
+                });
+                await response.body?.cancel();
             });
         } catch {
             /* noop */
@@ -222,8 +231,13 @@ export class LinkMeController {
         return this.lastPayload;
     }
 
-    dispose(): void {
+    cancelPendingRequests(): void {
         this.generation += 1;
+        this.requests.cancelAll();
+    }
+
+    dispose(): void {
+        this.cancelPendingRequests();
         this.detachNavigation();
         this.listeners.clear();
         this.httpClient = undefined;
@@ -271,7 +285,7 @@ export class LinkMeController {
             } else {
                 this.debugLog('processUrl.cid_miss', { cid: extraction.cid });
             }
-            return payload;
+            return this.isCurrent(generation, cfg, httpClient) ? payload : null;
         }
         if (cfg.resolveUniversalLinks && isSameOrigin(parsed.origin, cfg.origin)) {
             this.debugLog('processUrl.universal', { url: parsed.href });
@@ -284,12 +298,16 @@ export class LinkMeController {
                     this.emit(payload);
                 }
                 this.debugLog('processUrl.universal_success', { url: parsed.href });
-                return payload;
+                return this.isCurrent(generation, cfg, httpClient) ? payload : null;
             } else {
                 this.debugLog('processUrl.universal_miss', { url: parsed.href });
             }
         }
         return null;
+    }
+
+    private requestJson<T>(cfg: NormalizedConfig, client: HttpClient, input: RequestInfo | URL, init?: HttpRequestInit) {
+        return this.requests.run(cfg.requestTimeoutMs, (signal) => requestJson<T>(client, input, { ...init, signal }), [init?.signal]);
     }
 
     private async resolveCid(cid: string, cfg: NormalizedConfig, httpClient: HttpClient): Promise<LinkMePayload | null> {
@@ -300,7 +318,7 @@ export class LinkMeController {
             if (device) {
                 headers['x-linkme-device'] = JSON.stringify(device);
             }
-            const res = await requestJson<JsonMap>(httpClient, `${cfg.apiBaseUrl}/deeplink?cid=${encodeURIComponent(cid)}`, {
+            const res = await this.requestJson<JsonMap>(cfg, httpClient, `${cfg.apiBaseUrl}/deeplink?cid=${encodeURIComponent(cid)}`, {
                 method: 'GET',
                 headers,
             });
@@ -328,7 +346,7 @@ export class LinkMeController {
             if (device) {
                 body.device = device;
             }
-            const res = await requestJson<JsonMap>(httpClient, `${cfg.apiBaseUrl}/deeplink/resolve-url`, {
+            const res = await this.requestJson<JsonMap>(cfg, httpClient, `${cfg.apiBaseUrl}/deeplink/resolve-url`, {
                 method: 'POST',
                 headers: this.buildHeaders(true),
                 body: JSON.stringify(body),
@@ -373,6 +391,7 @@ export class LinkMeController {
     }
 
     private handleForcedWebRedirect(payload: LinkMePayload): boolean {
+        if (payload.navigationAllowed === false) return true;
         if (payload.forceRedirectWeb !== true) {
             return false;
         }
@@ -406,8 +425,11 @@ export class LinkMeController {
     }
 
     private emit(payload: LinkMePayload): void {
+        if (payload.navigationAllowed === false) return;
         this.lastPayload = payload;
+        const generation = this.generation;
         for (const listener of this.listeners) {
+            if (generation !== this.generation) break;
             try {
                 listener(payload);
             } catch {

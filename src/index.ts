@@ -36,6 +36,10 @@ export function getLastPayload(): LinkMePayload | null {
     return defaultController.getLastPayload();
 }
 
+export function cancelPendingRequests(): void {
+    defaultController.cancelPendingRequests();
+}
+
 export function dispose(): void {
     defaultController.dispose();
 }
