@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { LinkMeController } from '../controller.js';
 import type { LinkMeControllerDeps } from '../controller.js';
 import type { LinkMeEnvironment } from '../environment.js';
@@ -83,6 +83,8 @@ describe('LinkMeController', () => {
     let httpClient: MockHttpClient;
     let controller: LinkMeController;
 
+    afterEach(() => { controller?.dispose(); vi.useRealTimers(); });
+
     beforeEach(() => {
         environment = new MockEnvironment();
         httpClient = new MockHttpClient();
@@ -115,6 +117,19 @@ describe('LinkMeController', () => {
         const payload = await controller.resolveFromUrl();
         expect(payload).toEqual({ path: '/offer', cid: 'abc123', isLinkMe: true });
         expect(environment.replacedUrl).toBe('https://links.example/campaign');
+    });
+
+    it('does not route or launch a browser for metadata-only inferred attribution', async () => {
+        const metadata = { navigationAllowed: false, claimId: 'inferred-claim', attributionStatus: 'inferred', utm: { utm_source: 'campaign' }, forceRedirectWeb: true, webFallbackUrl: 'https://must-not-open.example' };
+        httpClient.when('POST', 'https://links.example/api/deferred/claim', () => new Response(JSON.stringify(metadata), { status: 200 }));
+        await controller.configure({ baseUrl: 'https://links.example', autoResolve: false, autoListen: false, fetch: unusedFetch });
+        const routed: LinkMePayload[] = [];
+        controller.onLink(payload => routed.push(payload));
+        expect(await controller.claimDeferredIfAvailable()).toMatchObject({ navigationAllowed: false, claimId: 'inferred-claim' });
+        expect(routed).toEqual([]);
+        expect(environment.openedUrl).toBeNull();
+        expect(normalizePayload({ navigationAllowed: false })).toBeNull();
+        expect(normalizePayload({ navigationAllowed: 'false', path: '/must-not-route' })).toBeNull();
     });
 
     it('claims deferred payload and emits it', async () => {
@@ -215,6 +230,11 @@ describe('LinkMeController', () => {
         expect(await controller.resolveFromUrl()).toBeNull();
     });
 
+    it('retains deterministic claim policy metadata without labeling an install', () => {
+        const fixture = JSON.parse(readFileSync(new URL('../../test-fixtures/link-payload.claim-policy-v2.json', import.meta.url), 'utf8'));
+        expect(normalizePayload(fixture)).toMatchObject({ claimId: fixture.claimId, claimMethod: 'direct_cid', matchConfidence: 'high', attributionStatus: 'deterministic', claimPolicyVersion: 2, contractVersion: 1 });
+    });
+
     it('accepts the versioned v1 golden payload without leaking unknown fields', () => {
         const fixture = JSON.parse(readFileSync(new URL('../../test-fixtures/link-payload.valid.json', import.meta.url), 'utf8')) as Record<string, unknown>;
         const payload = normalizePayload(fixture);
@@ -293,5 +313,88 @@ describe('LinkMeController', () => {
         await expect(controller.handleLink('http://[invalid')).resolves.toBeNull();
         httpClient.when('POST', 'https://links.example/api/deeplink/resolve-url', () => { throw 'network'; });
         await expect(controller.handleLink('https://links.example/error')).resolves.toBeNull();
+    });
+
+    it('bounds stalled headers, response bodies and analytics with the configured deadline', async () => {
+        vi.useFakeTimers();
+        await controller.configure({ baseUrl: 'https://links.example', fetch: unusedFetch, autoResolve: false, autoListen: false, requestTimeoutMs: 25 });
+        httpClient.when('GET', 'https://links.example/api/deeplink?cid=stalled', () => new Promise(() => {}));
+        const stalled = controller.handleLink('https://links.example/?cid=stalled');
+        await vi.advanceTimersByTimeAsync(25);
+        await expect(stalled).resolves.toBeNull();
+        expect(httpClient.requests[0].init?.signal?.aborted).toBe(true);
+
+        httpClient.when('POST', 'https://links.example/api/deferred/claim', () => ({ ok: true, status: 200, json: () => new Promise(() => {}) } as Response));
+        const body = controller.claimDeferredIfAvailable();
+        await vi.advanceTimersByTimeAsync(25);
+        await expect(body).resolves.toBeNull();
+        expect(httpClient.requests[1].init?.signal?.aborted).toBe(true);
+
+        httpClient.when('POST', 'https://links.example/api/app-events', () => new Promise(() => {}));
+        const analytics = controller.track('stalled');
+        await vi.advanceTimersByTimeAsync(25);
+        await expect(analytics).resolves.toBeUndefined();
+        expect(httpClient.requests[2].init?.signal?.aborted).toBe(true);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('cancels a body read before app switch, identity change or disposal and ignores late routing', async () => {
+        await controller.configure({ baseUrl: 'https://links.example', fetch: unusedFetch, autoResolve: false, autoListen: false });
+        const received: LinkMePayload[] = [];
+        controller.onLink(payload => received.push(payload));
+        for (const change of ['configure', 'identity', 'dispose', 'cancel']) {
+            let releaseBody!: (payload: unknown) => void;
+            let started!: () => void;
+            const bodyStarted = new Promise<void>(resolve => { started = resolve; });
+            httpClient.when('GET', 'https://links.example/api/deeplink?cid=pending', () => ({ ok: true, status: 200, json: () => { started(); return new Promise(resolve => { releaseBody = resolve; }); } } as Response));
+            const pending = controller.handleLink('https://links.example/?cid=pending');
+            await bodyStarted;
+            if (change === 'configure') await controller.configure({ baseUrl: 'https://links.example', appId: 'new-app', fetch: unusedFetch, autoResolve: false, autoListen: false });
+            if (change === 'identity') controller.setUserId('new-user');
+            if (change === 'dispose') controller.dispose();
+            if (change === 'cancel') controller.cancelPendingRequests();
+            await expect(pending).resolves.toBeNull();
+            expect(httpClient.requests[httpClient.requests.length - 1]?.init?.signal?.aborted).toBe(true);
+            releaseBody({ path: '/old', forceRedirectWeb: true, webFallbackUrl: 'https://must-not-open.example' });
+            await Promise.resolve();
+            expect(received).toEqual([]);
+            expect(environment.openedUrl).toBeNull();
+            expect(controller.getLastPayload()).toBeNull();
+            if (change === 'dispose') await controller.configure({ baseUrl: 'https://links.example', fetch: unusedFetch, autoResolve: false, autoListen: false });
+        }
+    });
+
+    it('stops remaining callbacks after a reentrant lifecycle change', async () => {
+        for (const change of ['configure', 'identity', 'dispose', 'cancel']) {
+            controller.dispose();
+            await controller.configure({ baseUrl: 'https://links.example', fetch: unusedFetch, autoResolve: false, autoListen: false });
+            const later = vi.fn();
+            controller.onLink(() => {
+                if (change === 'configure') void controller.configure({ baseUrl: 'https://new.example', fetch: unusedFetch, autoResolve: false, autoListen: false });
+                if (change === 'identity') controller.setUserId('new-user');
+                if (change === 'dispose') controller.dispose();
+                if (change === 'cancel') controller.cancelPendingRequests();
+            });
+            controller.onLink(later);
+            httpClient.when('GET', 'https://links.example/api/deeplink?cid=reentrant', () => new Response(JSON.stringify({ path: '/first' })));
+            await controller.handleLink('https://links.example/?cid=reentrant');
+            expect(later).not.toHaveBeenCalled();
+            if (change === 'configure' || change === 'dispose') expect(controller.getLastPayload()).toBeNull();
+        }
+    });
+
+    it('drops unsent analytics on app switch and sends the next event without old app/identity context', async () => {
+        await controller.configure({ baseUrl: 'https://links.example', appId: 'app-a', fetch: unusedFetch, autoResolve: false, autoListen: false });
+        controller.setUserId('user-a');
+        const queued = controller.track('old-event');
+        await controller.configure({ baseUrl: 'https://links.example', appId: 'app-b', fetch: unusedFetch, autoResolve: false, autoListen: false });
+        await queued;
+        expect(httpClient.requests).toEqual([]);
+        httpClient.when('POST', 'https://links.example/api/app-events', () => new Response(null, { status: 204 }));
+        await controller.track('new-event');
+        const event = httpClient.requests[0];
+        expect(event.init?.headers).toMatchObject({ 'x-app-id': 'app-b' });
+        expect(JSON.parse(event.init!.body as string)).toMatchObject({ type: 'new-event' });
+        expect(JSON.parse(event.init!.body as string)).not.toHaveProperty('userId');
     });
 });

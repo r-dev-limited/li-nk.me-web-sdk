@@ -1,3 +1,4 @@
+import { normalizeRequestTimeout } from './requestScope.js';
 import type { LinkMeWebConfig, NormalizedConfig } from './types.js';
 import type { LinkMeEnvironment } from './environment.js';
 import { getOrigin } from './url.js';
@@ -8,6 +9,7 @@ export function normalizeConfig(config: LinkMeWebConfig, env: LinkMeEnvironment)
     const origin = getOrigin(trimmed);
     const isBrowser = env.isBrowser();
     return {
+        requestTimeoutMs: normalizeRequestTimeout(config.requestTimeoutMs),
         baseUrl: trimmed,
         apiBaseUrl: `${trimmed}/api`,
         origin,

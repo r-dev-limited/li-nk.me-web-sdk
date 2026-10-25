@@ -4,6 +4,12 @@ All notable changes to the LinkMe Web SDK.
 
 ## Unreleased
 
+- Bound HTTP fetch/body operations to a configurable 15-second default and expose `cancelPendingRequests()`. Reconfigure, dispose and identity changes cancel pending work; late responses and reentrant lifecycle changes cannot deliver stale routes.
+
+- Preserve optional `navigationAllowed` and suppress routing callbacks/browser launches when false. Accept campaign-only inferred receipts without exposing a CID or private route.
+
+- Preserve additive claim ID, method, confidence, attribution status, payload contract version, and claim policy version in routing payloads.
+
 - Upgrade the build compiler to TypeScript 7.0.2; retain the current Vitest 5 test and coverage toolchain.
 
 ## 0.2.15
