@@ -2,6 +2,10 @@
 
 All notable changes to the LinkMe Web SDK.
 
+## Unreleased
+
+- Upgrade the build compiler to TypeScript 7.0.2; retain the current Vitest 5 test and coverage toolchain.
+
 ## 0.2.15
 
 - Drops in-flight link and deferred-claim responses after disposal or reconfiguration so an older app configuration cannot emit stale payloads.
